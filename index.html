@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+  <title>供应商交期协同平台 | 物料级确认 · 批量删除供应商</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+  <style>
+    body { background: #f1f5f9; }
+    .toast-message { position: fixed; top: 1rem; right: 1rem; z-index: 9999; background: white; border-radius: 0.75rem; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); padding: 0.75rem 1.25rem; display: flex; align-items: center; gap: 0.75rem; transform: translateX(120%); transition: transform 0.25s ease; max-width: 380px; border-left: 4px solid; }
+    .toast-message.show { transform: translateX(0); }
+    .toast-success { border-left-color: #10b981; background: #f0fdf4; }
+    .toast-error { border-left-color: #ef4444; background: #fef2f2; }
+    .toast-warning { border-left-color: #f59e0b; background: #fffbeb; }
+    .toast-info { border-left-color: #3b82f6; background: #eff6ff; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <div id="toastContainer" class="fixed top-4 right-4 z-[9999] flex flex-col gap-2"></div>
+
+  <!-- 顶部导航栏 -->
+  <header id="mainHeader" class="bg-gradient-to-r from-blue-800 to-indigo-900 text-white shadow-md hidden sticky top-0 z-20">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3"><i class="fa-solid fa-truck-fast text-2xl"></i><h1 class="text-xl font-bold">交期协同平台</h1></div>
+      <div class="flex items-center gap-4">
+        <div class="bg-white/10 rounded-full px-3 py-1.5 flex items-center gap-2 text-sm"><i class="fa-regular fa-circle-user"></i><span id="headerUsername"></span><span id="headerRoleBadge" class="text-xs px-2 py-0.5 rounded-full"></span></div>
+        <button onclick="app.logout()" class="text-sm text-blue-100 hover:text-white"><i class="fa-solid fa-right-from-bracket"></i> 退出</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="appMain" class="flex-1 w-full">
+    <!-- 登录视图 -->
+    <div id="viewLogin" class="flex items-center justify-center min-h-[80vh] px-4 py-12">
+      <div class="max-w-md w-full bg-white rounded-2xl shadow-2xl overflow-hidden">
+        <div class="bg-gradient-to-r from-blue-800 to-indigo-800 p-8 text-center text-white">
+          <div class="mx-auto w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mb-3"><i class="fa-solid fa-file-signature text-3xl"></i></div>
+          <h2 class="text-2xl font-bold">供应商/管理员登录</h2>
+          <p class="text-blue-100 text-sm mt-1">物料级确认 · 批量操作 · 多管理员</p>
+        </div>
+        <div class="p-8">
+          <form id="loginForm" onsubmit="event.preventDefault(); app.login();">
+            <div class="mb-4"><label class="block text-sm font-semibold">账号</label><div class="relative"><i class="fa-solid fa-user absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i><input type="text" id="loginUsername" class="w-full pl-10 pr-4 py-2.5 border rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="供应商名称 / 管理员账号" autocomplete="off"></div></div>
+            <div class="mb-6"><label class="block text-sm font-semibold">密码</label><div class="relative"><i class="fa-solid fa-lock absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i><input type="password" id="loginPassword" class="w-full pl-10 pr-4 py-2.5 border rounded-xl" placeholder="········"></div></div>
+            <button type="submit" class="w-full bg-blue-700 hover:bg-blue-800 text-white font-semibold py-2.5 rounded-xl transition shadow-md flex items-center justify-center gap-2"><i class="fa-solid fa-arrow-right-to-bracket"></i> 登录</button>
+          </form>
+          <div class="mt-4 text-center text-xs text-gray-500">
+            <button id="resetDataBtn" class="text-red-500 underline">重置系统数据（恢复默认）</button>
+            <p class="mt-2">默认管理员：admin / 123456<br>示例供应商：立达建材 / 123456</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 供应商主视图 -->
+    <div id="viewSupplier" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 hidden">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div class="bg-white rounded-xl shadow p-5 flex items-center gap-4 border-l-4 border-blue-500"><div class="p-3 rounded-full bg-blue-100 text-blue-600"><i class="fa-solid fa-receipt"></i></div><div><p class="text-gray-500">总物料行数</p><p id="supplierTotalOrders" class="text-2xl font-bold">0</p></div></div>
+        <div class="bg-white rounded-xl shadow p-5 flex items-center gap-4 border-l-4 border-amber-500"><div class="p-3 rounded-full bg-amber-100 text-amber-600"><i class="fa-solid fa-hourglass-half"></i></div><div><p class="text-gray-500">待确认行数</p><p id="supplierPendingCount" class="text-2xl font-bold">0</p></div></div>
+        <div class="bg-white rounded-xl shadow p-5 flex items-center gap-4 border-l-4 border-emerald-500"><div class="p-3 rounded-full bg-emerald-100 text-emerald-600"><i class="fa-solid fa-check-double"></i></div><div><p class="text-gray-500">已确认行数</p><p id="supplierConfirmedCount" class="text-2xl font-bold">0</p></div></div>
+      </div>
+      <div class="bg-white rounded-xl shadow overflow-hidden">
+        <div class="px-6 py-4 border-b bg-gray-50 flex flex-wrap justify-between items-center gap-3">
+          <div class="flex items-center gap-3"><h3 class="font-semibold"><i class="fa-solid fa-list-ul text-blue-500"></i> 采购订单明细</h3><div class="flex bg-gray-200 rounded-md p-0.5"><button data-filter="pending" class="filter-btn px-3 py-1 text-sm rounded-md font-medium bg-white text-blue-600 shadow-sm">待确认</button><button data-filter="confirmed" class="filter-btn px-3 py-1 text-sm rounded-md text-gray-600">已确认</button><button data-filter="all" class="filter-btn px-3 py-1 text-sm rounded-md text-gray-600">全部</button></div></div>
+          <div class="flex gap-3"><button id="batchConfirmBtn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-sm flex items-center gap-1"><i class="fa-regular fa-check-square"></i> 批量确认</button><button id="downloadPendingBtn" class="border border-blue-500 text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg text-sm"><i class="fa-solid fa-download"></i> 下载待确认</button><button id="refreshSupplierBtn" class="text-gray-500 hover:text-blue-600"><i class="fa-solid fa-rotate-right"></i> 刷新</button></div>
+        </div>
+        <div class="p-4 border-b"><div class="relative max-w-xs"><i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i><input type="text" id="supplierSearchInput" class="w-full pl-9 pr-4 py-2 border rounded-lg text-sm" placeholder="采购单号/物料编码"></div></div>
+        <div class="overflow-x-auto">
+          <table class="min-w-full text-sm">
+            <thead class="bg-gray-50 text-gray-600 text-xs uppercase"><tr><th class="px-3 py-3 w-8"><input type="checkbox" id="selectAllCheckbox"></th><th class="px-5 py-3">采购单号</th><th class="px-5 py-3">物料信息</th><th class="px-5 py-3">需求数量</th><th class="px-5 py-3">需求日期</th><th class="px-5 py-3">承诺交期</th><th class="px-5 py-3">备注</th><th class="px-5 py-3">状态/操作</th></tr></thead>
+            <tbody id="supplierTableBody"></tbody>
+          </table>
+        </div>
+        <div id="supplierPagination" class="px-6 py-3 border-t hidden justify-between items-center"></div>
+        <div id="supplierEmptyMsg" class="hidden py-16 text-center text-gray-400"><i class="fa-regular fa-folder-open text-4xl"></i><p>暂无订单物料</p></div>
+      </div>
+    </div>
+
+    <!-- 批量确认模态框 -->
+    <div id="batchModal" class="fixed inset-0 bg-black/50 z-[100] hidden items-center justify-center">
+      <div class="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6">
+        <h3 class="text-lg font-bold mb-2 flex justify-between"><span>批量确认交期</span><button id="closeBatchModalBtn"><i class="fa-solid fa-xmark text-gray-400"></i></button></h3>
+        <p class="text-sm text-gray-500 mb-3">已选中 <span id="batchSelectedCount">0</span> 个待确认物料行</p>
+        <div class="mb-3"><label class="block text-sm font-medium">统一承诺交期 *</label><input type="date" id="batchPromiseDate" class="w-full border rounded-lg p-2 mt-1"></div>
+        <div class="mb-4"><label class="block text-sm font-medium">统一备注</label><input type="text" id="batchRemark" class="w-full border rounded-lg p-2 mt-1" placeholder="批量备注"></div>
+        <div class="flex justify-end gap-3"><button id="cancelBatchBtn" class="px-4 py-2 border rounded-lg">取消</button><button id="confirmBatchBtn" class="bg-blue-600 text-white px-4 py-2 rounded-lg">确认批量提交</button></div>
+      </div>
+    </div>
+
+    <!-- 管理员视图 -->
+    <div id="viewAdmin" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 hidden">
+      <div class="flex border-b border-gray-200 gap-4 mb-6">
+        <button data-tab="data" class="tab-btn pb-2 px-1 border-b-2 border-blue-600 text-blue-700 font-medium">数据管理</button>
+        <button data-tab="accounts" class="tab-btn pb-2 px-1 border-b-2 border-transparent text-gray-500">账号管理</button>
+        <button data-tab="risk" class="tab-btn pb-2 px-1 border-b-2 border-transparent text-gray-500">风险物料预警</button>
+      </div>
+
+      <!-- 数据管理面板 -->
+      <div id="adminDataPanel">
+        <div class="bg-white rounded-xl shadow mb-8 p-6"><h3 class="font-medium mb-3"><i class="fa-solid fa-upload text-blue-500"></i> 导入提采汇总表</h3><div class="flex flex-wrap gap-4 items-center"><label class="bg-blue-50 border px-4 py-2 rounded-lg text-sm cursor-pointer"><i class="fa-regular fa-file-excel"></i> 选择Excel<input type="file" id="excelUploadFile" accept=".xlsx, .xls" class="hidden"></label><span id="fileNameDisplay" class="text-xs text-gray-500">未选择</span><button id="importExecuteBtn" disabled class="bg-gray-400 text-white px-4 py-2 rounded-lg text-sm">执行导入</button><button id="importCsvBtn" class="bg-teal-600 text-white px-4 py-2 rounded-lg text-sm"><i class="fa-solid fa-file-csv"></i> 载入示例订单</button><button id="downloadTemplateBtn" class="border px-4 py-2 rounded-lg text-sm">下载模板</button><button id="clearAllDataBtn" class="text-red-500 border border-red-200 px-4 py-2 rounded-lg text-sm">清空全部数据</button></div></div>
+        <div class="bg-white rounded-xl shadow overflow-hidden"><div class="p-4 border-b flex justify-between"><h3 class="font-semibold">全局订单明细（物料级）</h3><div class="relative"><i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i><input type="text" id="adminSearchInput" class="pl-9 pr-4 py-1.5 border rounded-lg text-sm w-64" placeholder="采购单号/供应商/物料"></div></div><div class="overflow-x-auto"><table class="min-w-full text-sm"><thead class="bg-gray-50"><tr><th class="px-5 py-3">采购单号</th><th class="px-5 py-3">物料编码</th><th class="px-5 py-3">物料名称</th><th class="px-5 py-3">供应商</th><th class="px-5 py-3">需求数量</th><th class="px-5 py-3">需求日期</th><th class="px-5 py-3">承诺交期/分批</th><th class="px-5 py-3">确认人/时间</th></tr></thead><tbody id="adminTableBody"></tbody></table></div><div id="adminPagination" class="px-6 py-3 border-t hidden"></div><div id="adminEmptyMsg" class="hidden py-16 text-center text-gray-400">暂无数据</div></div>
+      </div>
+
+      <!-- 账号管理面板（含批量删除供应商） -->
+      <div id="adminAccountsPanel" class="hidden">
+        <div class="bg-white rounded-xl shadow p-6 mb-6"><h3 class="font-medium mb-4"><i class="fa-solid fa-truck text-blue-500"></i> 供应商账号管理</h3><div class="grid md:grid-cols-4 gap-4 items-end"><div><label class="text-sm">供应商全称</label><input type="text" id="newSupName" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="新供应商"></div><div><label class="text-sm">密码(随机8位)</label><input type="text" id="newSupPwd" class="w-full border rounded-lg px-3 py-2 text-sm bg-gray-50" readonly></div><div><button id="genSupPwdBtn" class="border px-3 py-2 rounded-lg text-sm"><i class="fa-solid fa-rotate-right"></i> 随机生成</button></div><div><button id="addSupplierBtn" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm">添加供应商</button></div></div></div>
+        <div class="bg-white rounded-xl shadow overflow-hidden mb-8"><div class="px-6 py-4 border-b flex justify-between items-center"><h3 class="font-medium">供应商列表</h3><div class="flex gap-3"><button id="batchDeleteSupplierBtn" class="bg-red-500 text-white px-3 py-1 rounded-lg text-sm"><i class="fa-regular fa-trash-can"></i> 批量删除选中</button><button id="downloadAccountsBtn" class="text-blue-600 text-sm"><i class="fa-solid fa-download"></i> 导出账号</button></div></div><div class="overflow-x-auto"><table class="min-w-full"><thead><tr><th class="px-3 py-3 w-8"><input type="checkbox" id="selectAllSupplierCheckbox"></th><th class="px-6 py-3 text-left">供应商名称</th><th class="px-6 py-3">创建时间</th><th class="px-6 py-3">操作</th></tr></thead><tbody id="accountsTableBody"></tbody></table></div><div id="accountsEmptyMsg" class="hidden py-12 text-center text-gray-400">暂无供应商账号</div></div>
+        
+        <div class="bg-white rounded-xl shadow p-6 mb-6"><h3 class="font-medium mb-4"><i class="fa-solid fa-user-shield text-indigo-500"></i> 管理员账号管理</h3><div class="grid md:grid-cols-4 gap-4 items-end"><div><label class="text-sm">管理员用户名</label><input type="text" id="newAdminName" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="admin2"></div><div><label class="text-sm">初始密码</label><input type="text" id="newAdminPwd" class="w-full border rounded-lg px-3 py-2 text-sm" value="123456"></div><div><button id="genAdminPwdBtn" class="border px-3 py-2 rounded-lg text-sm"><i class="fa-solid fa-rotate-right"></i> 随机密码</button></div><div><button id="addAdminBtn" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm">添加管理员</button></div></div></div>
+        <div class="bg-white rounded-xl shadow overflow-hidden"><div class="px-6 py-4 border-b"><h3 class="font-medium">管理员列表</h3></div><div class="overflow-x-auto"><table class="min-w-full"><thead><tr><th class="px-6 py-3">用户名</th><th class="px-6 py-3">创建时间</th><th class="px-6 py-3">操作</th></tr></thead><tbody id="adminAccountsTableBody"></tbody></table></div><div id="adminAccountsEmptyMsg" class="hidden py-12 text-center text-gray-400">暂无管理员账号</div></div>
+        <div class="mt-6 bg-white rounded-xl shadow p-6"><h3 class="font-medium"><i class="fa-solid fa-key"></i> 修改当前登录密码</h3><div class="grid md:grid-cols-3 gap-4 items-end mt-3"><div><label class="text-sm">旧密码</label><input type="password" id="changeOldPwd" class="w-full border rounded-lg px-3 py-2 text-sm"></div><div><label class="text-sm">新密码</label><input type="password" id="changeNewPwd" class="w-full border rounded-lg px-3 py-2 text-sm"></div><div><button id="changeOwnPwdBtn" class="bg-gray-800 text-white px-4 py-2 rounded-lg text-sm">修改密码</button></div></div></div>
+      </div>
+
+      <!-- 风险物料面板 -->
+      <div id="adminRiskPanel" class="hidden"><div class="bg-white rounded-xl shadow overflow-hidden"><div class="bg-red-50 px-6 py-4 border-b flex justify-between"><h3 class="text-red-800 font-medium"><i class="fa-solid fa-triangle-exclamation"></i> 交期风险清单</h3><button id="refreshRiskBtn" class="text-red-500 text-sm">刷新评估</button></div><div class="overflow-x-auto"><table class="min-w-full"><thead><tr><th class="px-6 py-3">采购单号</th><th class="px-6 py-3">物料编码</th><th class="px-6 py-3">供应商</th><th class="px-6 py-3">需求日期</th><th class="px-6 py-3">承诺交期</th><th class="px-6 py-3">风险状态</th></tr></thead><tbody id="riskTableBody"></tbody></table></div><div id="riskEmptyMsg" class="hidden py-16 text-center text-gray-500"><i class="fa-regular fa-circle-check text-4xl text-emerald-400"></i><p>暂无高风险物料</p></div></div></div>
+    </div>
+  </main>
+
+  <script>
+    // ======================== 存储层 ========================
+    const STORE = {
+      orders: 'purchase_orders',
+      deliveries: 'delivery_records',
+      supplierAccounts: 'supplier_accounts',
+      adminAccounts: 'admin_accounts',
+      user: 'currentUser'
+    };
+    async function get(key) { const v = localStorage.getItem(`sup_${key}`); return v ? JSON.parse(v) : null; }
+    async function set(key, data) { localStorage.setItem(`sup_${key}`, JSON.stringify(data)); return true; }
+    async function remove(key) { localStorage.removeItem(`sup_${key}`); return true; }
+    function toast(msg, type='info'){ const ctn = document.getElementById('toastContainer'); const el = document.createElement('div'); el.className = `toast-message toast-${type} show`; el.innerHTML = `<i class="fa-solid ${type==='success'?'fa-circle-check':type==='error'?'fa-circle-exclamation':'fa-circle-info'}"></i><span>${msg}</span>`; ctn.appendChild(el); setTimeout(()=>{ el.classList.remove('show'); setTimeout(()=>el.remove(),300); },3200); }
+    function generateRandomPassword(len=8){ const chars='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'; let pwd=''; for(let i=0;i<len;i++) pwd+=chars[Math.floor(Math.random()*chars.length)]; return pwd; }
+    
+    // 获取订单明细+交期（物料级唯一标识 orderId + itemCode）
+    async function getOrderLinesWithDelivery(){
+      const orders = await get(STORE.orders) || [];
+      const deliveries = await get(STORE.deliveries) || [];
+      return orders.map(order => {
+        const key = `${order.orderId}|${order.itemCode}`;
+        const delivery = deliveries.find(d => `${d.orderId}|${d.itemCode}` === key);
+        return { ...order, ...delivery };
+      });
+    }
+
+    async function initSystemData(){
+      if(!await get(STORE.adminAccounts)) await set(STORE.adminAccounts, [{ username:'admin', password:'123456', createTime:new Date().toISOString() }]);
+      if(!await get(STORE.supplierAccounts)) await set(STORE.supplierAccounts, []);
+      if(!await get(STORE.orders)){
+        const demoOrders = [
+          { orderId:'PO-241001', itemCode:'MAT-1001', itemName:'铝合金型材', spec:'6061', qty:500, requiredDate:'2025-01-18', supplierName:'立达建材', remarks:'急需' },
+          { orderId:'PO-241001', itemCode:'MAT-1002', itemName:'铝合金角码', spec:'L型', qty:300, requiredDate:'2025-01-18', supplierName:'立达建材', remarks:'配套' },
+          { orderId:'PO-241002', itemCode:'IC-205', itemName:'微控制器', qty:2000, requiredDate:'2025-01-22', supplierName:'华强电子', remarks:'' },
+          { orderId:'PO-241003', itemCode:'SCREW', itemName:'不锈钢螺丝', qty:8000, requiredDate:'2025-01-12', supplierName:'立达建材', remarks:'产线停线风险' }
+        ];
+        await set(STORE.orders, demoOrders);
+        await set(STORE.deliveries, []);
+        await set(STORE.supplierAccounts, [{ name:'立达建材', password:'123456', createTime:new Date().toISOString() },{ name:'华强电子', password:'123456', createTime:new Date().toISOString() }]);
+      }
+    }
+
+    // 重置系统
+    window.resetSystem = async function() {
+      localStorage.clear();
+      await initSystemData();
+      toast('系统已重置，请使用 admin/123456 登录', 'success');
+      setTimeout(() => location.reload(), 1000);
+    };
+
+    // ======================== 主应用 ========================
+    const app = {
+      currentUser: null,
+      supplierDataRaw: [], supplierFilter: 'pending', supplierSearch: '', supPage: 1, supPageSize: 15, selectedOrdersSet: new Set(),
+      adminDataRaw: [], adminSearch: '', adminPage: 1, adminPageSize: 15,
+      
+      async init(){ 
+        await initSystemData(); 
+        const user = await get(STORE.user); 
+        if(user && user.name) this.setSession(user); 
+        else this.showView('login'); 
+      },
+      showView(v){ 
+        document.getElementById('viewLogin').classList.add('hidden'); 
+        document.getElementById('viewSupplier').classList.add('hidden'); 
+        document.getElementById('viewAdmin').classList.add('hidden'); 
+        document.getElementById(`view${v==='login'?'Login':v==='supplier'?'Supplier':'Admin'}`).classList.remove('hidden'); 
+        document.getElementById('mainHeader').classList.toggle('hidden', v==='login');
+        if(v === 'admin') { this.loadAdminData(); this.loadSupplierAccounts(); this.loadAdminAccounts(); this.loadRiskData(); }
+        if(v === 'supplier') this.loadSupplierData();
+      },
+      setSession(user){ 
+        this.currentUser = user; 
+        document.getElementById('headerUsername').innerText = user.name; 
+        const badge = document.getElementById('headerRoleBadge'); 
+        if(user.role==='admin'){ 
+          badge.innerText = '管理员'; 
+          badge.classList.add('bg-amber-600/40'); 
+          this.showView('admin'); 
+        } else { 
+          badge.innerText = '供应商'; 
+          badge.classList.add('bg-emerald-600/40'); 
+          this.showView('supplier'); 
+        } 
+        document.getElementById('mainHeader').classList.remove('hidden');
+      },
+      async login(){ 
+        const un = document.getElementById('loginUsername').value.trim(); 
+        const pw = document.getElementById('loginPassword').value.trim(); 
+        if(!un||!pw) return toast('请输入账号密码','warning'); 
+        const admins = await get(STORE.adminAccounts)||[]; 
+        const admin = admins.find(a=>a.username===un); 
+        if(admin && admin.password===pw){ 
+          await set(STORE.user,{name:un,role:'admin'}); 
+          this.setSession({name:un,role:'admin'}); 
+          toast('管理员登录成功','success'); 
+          return; 
+        } 
+        const suppliers = await get(STORE.supplierAccounts)||[]; 
+        const sup = suppliers.find(s=>s.name===un); 
+        if(sup && sup.password===pw){ 
+          await set(STORE.user,{name:un,role:'supplier'}); 
+          this.setSession({name:un,role:'supplier'}); 
+          toast(`供应商 ${un} 登录成功`,'success'); 
+        } else toast('账号或密码错误','error'); 
+      },
+      async logout(){ 
+        await remove(STORE.user); 
+        this.currentUser = null; 
+        this.showView('login'); 
+        document.getElementById('mainHeader').classList.add('hidden');
+      },
+
+      // ======================== 供应商模块（物料级） ========================
+      async loadSupplierData(){ 
+        const allLines = await getOrderLinesWithDelivery(); 
+        this.supplierDataRaw = allLines.filter(line => line.supplierName === this.currentUser.name); 
+        this.renderSupplierTable(); 
+      },
+      renderSupplierTable(){ 
+        let filtered = this.supplierDataRaw; 
+        if(this.supplierFilter==='pending') filtered = filtered.filter(r=>!r.promisedDate); 
+        if(this.supplierFilter==='confirmed') filtered = filtered.filter(r=>r.promisedDate); 
+        if(this.supplierSearch) filtered = filtered.filter(r=>r.orderId?.toLowerCase().includes(this.supplierSearch)||r.itemCode?.toLowerCase().includes(this.supplierSearch)); 
+        const total = filtered.length, start = (this.supPage-1)*this.supPageSize, pageData = filtered.slice(start, start+this.supPageSize); 
+        const tbody = document.getElementById('supplierTableBody'); 
+        if(!pageData.length){ tbody.innerHTML=''; document.getElementById('supplierEmptyMsg')?.classList.remove('hidden'); document.getElementById('supplierPagination')?.classList.add('hidden'); return; } 
+        document.getElementById('supplierEmptyMsg')?.classList.add('hidden'); 
+        const pendingCount = this.supplierDataRaw.filter(r=>!r.promisedDate).length; 
+        document.getElementById('supplierTotalOrders').innerText = this.supplierDataRaw.length; 
+        document.getElementById('supplierPendingCount').innerText = pendingCount; 
+        document.getElementById('supplierConfirmedCount').innerText = this.supplierDataRaw.filter(r=>r.promisedDate).length;
+        tbody.innerHTML = pageData.map(row => { 
+          const isConfirmed = !!row.promisedDate; 
+          const uniqueId = `${row.orderId}|${row.itemCode}`; 
+          const safeId = uniqueId.replace(/[^a-zA-Z0-9|]/g,'_'); 
+          const showCheckbox = (!isConfirmed && this.supplierFilter !== 'confirmed');
+          const checkboxHtml = showCheckbox ? `<input type="checkbox" class="order-checkbox" data-unique-id="${uniqueId}">` : '<span class="w-4 inline-block"></span>';
+          let deliveryHtml = ''; 
+          if(isConfirmed && row.isBatch){ 
+            let batchHtml = ''; 
+            for(let i=1;i<=4;i++) if(row[`batch${i}Qty`] && row[`batch${i}Date`]) batchHtml += `<div class="text-xs">批次${i}:${row[`batch${i}Qty`]}@${row[`batch${i}Date`]}</div>`; 
+            deliveryHtml = batchHtml || row.promisedDate; 
+          } else if(isConfirmed) deliveryHtml = `<span class="text-emerald-600">${row.promisedDate}</span>`; 
+          else deliveryHtml = `<div class="min-w-[200px]"><div class="flex gap-2 text-xs"><label><input type="radio" name="deliveryType-${safeId}" value="single" checked> 整批交货</label><label><input type="radio" name="deliveryType-${safeId}" value="batch"> 分批交货</label></div><div id="singleArea-${safeId}"><div><label><input type="radio" name="canMeet-${safeId}" value="yes" onchange="app.setMeetDate('${safeId}','${row.requiredDate}')"> 可达成</label><label><input type="radio" name="canMeet-${safeId}" value="no" onchange="app.setMeetDate('${safeId}','')"> 延期</label></div><input type="date" id="promiseDate-${safeId}" class="border rounded p-1 text-sm w-36" disabled></div><div id="batchArea-${safeId}" class="hidden"><div class="text-xs">总需求: ${row.qty}</div>${[1,2,3,4].map(i=>`<div class="flex gap-1 mt-1"><input type="number" placeholder="数量${i}" id="batchQty${i}-${safeId}" class="w-16 border rounded p-1 text-xs"><input type="date" id="batchDate${i}-${safeId}" class="w-28 border rounded p-1 text-xs"></div>`).join('')}</div></div>`; 
+          return `<tr><td class="px-3">${checkboxHtml}</td><td class="px-5 py-3 font-medium">${row.orderId}</td><td class="px-5 py-3">${row.itemName}<div class="text-xs text-gray-400">${row.itemCode}</div></td><td class="px-5 py-3">${row.qty}</td><td class="px-5 py-3">${row.requiredDate}</td><td class="px-5 py-3">${deliveryHtml}</td><td class="px-5 py-3"><input type="text" id="remarkInput-${safeId}" value="${row.remarks||''}" class="border rounded p-1 w-28 text-sm"></td><td class="px-5 py-3">${isConfirmed?`<span class="text-green-600 text-xs">已确认 ${row.confirmTime?.slice(0,10)}</span>`:`<button onclick="app.submitSingleDelivery('${row.orderId}','${row.itemCode}','${row.qty}')" class="bg-blue-600 text-white px-3 py-1 rounded text-xs">确认</button>`}</td></tr>`; 
+        }).join('');
+        this.renderPagination('supplierPagination', total, this.supPage, this.supPageSize, (p)=>{this.supPage=p; this.renderSupplierTable();}, (s)=>{this.supPageSize=s; this.supPage=1; this.renderSupplierTable();});
+        document.querySelectorAll('.order-checkbox').forEach(cb => cb.addEventListener('change',()=>this.updateSelectedOrders())); 
+        this.updateSelectedOrders();
+      },
+      updateSelectedOrders(){ 
+        const checkboxes = document.querySelectorAll('.order-checkbox'); 
+        this.selectedOrdersSet.clear(); 
+        checkboxes.forEach(cb=>{ if(cb.checked) this.selectedOrdersSet.add(cb.getAttribute('data-unique-id')); }); 
+        document.getElementById('batchSelectedCount') && (document.getElementById('batchSelectedCount').innerText = this.selectedOrdersSet.size); 
+      },
+      toggleSelectAll(checked){ 
+        document.querySelectorAll('.order-checkbox').forEach(cb=>cb.checked = checked); 
+        this.updateSelectedOrders(); 
+      },
+      setMeetDate(id, reqDate){ 
+        const input = document.getElementById(`promiseDate-${id}`); 
+        if(reqDate){ input.value = reqDate; input.disabled = true; } 
+        else { input.disabled = false; input.value = ''; } 
+      },
+      openBatchConfirmModal(){ 
+        if(this.selectedOrdersSet.size === 0) return toast('请先勾选待确认物料行（表格左侧复选框）','warning'); 
+        document.getElementById('batchModal').style.display = 'flex'; 
+        document.getElementById('batchModal').classList.remove('hidden'); 
+        document.getElementById('batchSelectedCount').innerText = this.selectedOrdersSet.size; 
+      },
+      closeBatchModal(){ 
+        document.getElementById('batchModal').classList.add('hidden'); 
+        document.getElementById('batchModal').style.display = 'none'; 
+      },
+      async submitBatchConfirm(){ 
+        const promiseDate = document.getElementById('batchPromiseDate').value; 
+        if(!promiseDate) return toast('请填写统一承诺交期','warning'); 
+        const remark = document.getElementById('batchRemark').value; 
+        const uniqueIds = Array.from(this.selectedOrdersSet); 
+        let success = 0; 
+        for(let uid of uniqueIds){ 
+          const [orderId, itemCode] = uid.split('|'); 
+          const orderLine = this.supplierDataRaw.find(o=>o.orderId===orderId && o.itemCode===itemCode); 
+          if(!orderLine || orderLine.promisedDate) continue; 
+          const deliveries = await get(STORE.deliveries)||[]; 
+          const newRec = { orderId, itemCode, promisedDate: promiseDate, isBatch: false, remarks: remark, confirmPerson: this.currentUser.name, confirmTime: new Date().toISOString() }; 
+          const idx = deliveries.findIndex(d=>d.orderId===orderId && d.itemCode===itemCode); 
+          idx>=0 ? deliveries[idx]=newRec : deliveries.push(newRec); 
+          await set(STORE.deliveries, deliveries); 
+          success++; 
+        } 
+        toast(`批量确认 ${success} 个物料行成功`,'success'); 
+        this.closeBatchModal(); 
+        this.loadSupplierData(); 
+      },
+      async submitSingleDelivery(orderId, itemCode, requiredQty){ 
+        const safeId = `${orderId}|${itemCode}`.replace(/[^a-zA-Z0-9|]/g,'_'); 
+        const isBatchRadio = document.querySelector(`input[name="deliveryType-${safeId}"]:checked`); 
+        const isBatch = isBatchRadio && isBatchRadio.value === 'batch'; 
+        let promisedDate = '', batchData = {}; 
+        if(!isBatch){ 
+          const canMeet = document.querySelector(`input[name="canMeet-${safeId}"]:checked`); 
+          if(!canMeet) return toast('请选择需求日期是否可达成','warning'); 
+          const dateVal = document.getElementById(`promiseDate-${safeId}`).value; 
+          if(!dateVal) return toast('请填写承诺交期','warning'); 
+          promisedDate = dateVal; 
+        } else { 
+          let total = 0, latest = ''; 
+          for(let i=1;i<=4;i++){ 
+            let qty = Number(document.getElementById(`batchQty${i}-${safeId}`)?.value); 
+            let d = document.getElementById(`batchDate${i}-${safeId}`)?.value; 
+            if((qty>0 && !d) || (d && qty<=0)) return toast(`批次${i}数量和日期需完整填写`,'warning'); 
+            if(qty>0 && d){ 
+              batchData[`batch${i}Qty`] = qty; 
+              batchData[`batch${i}Date`] = d; 
+              total += qty; 
+              if(!latest || new Date(d) > new Date(latest)) latest = d; 
+            } 
+          } 
+          if(total === 0) return toast('至少填写一个有效批次','warning'); 
+          if(total !== requiredQty) return toast(`分批交付总数 ${total} 不等于需求数量 ${requiredQty}，请调整后提交`,'error'); 
+          promisedDate = latest || new Date().toISOString().slice(0,10); 
+        } 
+        const remark = document.getElementById(`remarkInput-${safeId}`)?.value || ''; 
+        const deliveries = await get(STORE.deliveries)||[]; 
+        const record = { orderId, itemCode, promisedDate, isBatch: !!isBatch, ...batchData, remarks: remark, confirmPerson: this.currentUser.name, confirmTime: new Date().toISOString() }; 
+        const idx = deliveries.findIndex(d=>d.orderId===orderId && d.itemCode===itemCode); 
+        idx>=0 ? deliveries[idx]=record : deliveries.push(record); 
+        await set(STORE.deliveries, deliveries); 
+        toast('交期确认成功','success'); 
+        this.loadSupplierData(); 
+      },
+      setSupplierFilter(f){ 
+        this.supplierFilter = f; 
+        this.supPage = 1; 
+        document.querySelectorAll('.filter-btn').forEach(btn=>{ 
+          if(btn.dataset.filter === f) btn.className = 'filter-btn px-3 py-1 text-sm rounded-md font-medium bg-white text-blue-600 shadow-sm'; 
+          else btn.className = 'filter-btn px-3 py-1 text-sm rounded-md text-gray-600'; 
+        }); 
+        this.renderSupplierTable(); 
+      },
+      handleSupplierSearch(){ 
+        this.supplierSearch = document.getElementById('supplierSearchInput').value.toLowerCase(); 
+        this.supPage = 1; 
+        this.renderSupplierTable(); 
+      },
+      async downloadSupplierOrders(){ 
+        const pend = this.supplierDataRaw.filter(r=>!r.promisedDate); 
+        if(!pend.length) return toast('无待确认订单','warning'); 
+        this.exportToExcel(pend, `${this.currentUser.name}_待确认物料清单.xlsx`); 
+      },
+
+      // ======================== 管理员模块 ========================
+      async loadAdminData(){ 
+        this.adminDataRaw = await getOrderLinesWithDelivery(); 
+        this.renderAdminTable(); 
+      },
+      renderAdminTable(){ 
+        let filtered = this.adminDataRaw; 
+        if(this.adminSearch) filtered = filtered.filter(r=>r.orderId?.toLowerCase().includes(this.adminSearch)||r.supplierName?.toLowerCase().includes(this.adminSearch)||r.itemCode?.toLowerCase().includes(this.adminSearch)); 
+        const total = filtered.length, start = (this.adminPage-1)*this.adminPageSize, pageData = filtered.slice(start, start+this.adminPageSize); 
+        const tbody = document.getElementById('adminTableBody'); 
+        if(!pageData.length){ tbody.innerHTML=''; document.getElementById('adminEmptyMsg').classList.remove('hidden'); document.getElementById('adminPagination').classList.add('hidden'); return; } 
+        document.getElementById('adminEmptyMsg').classList.add('hidden'); 
+        tbody.innerHTML = pageData.map(r=>`<tr><td class="px-5 py-2">${r.orderId}</td><td class="px-5 py-2">${r.itemCode}</td><td class="px-5 py-2">${r.itemName}</td><td class="px-5 py-2">${r.supplierName}</td><td class="px-5 py-2">${r.qty}</td><td class="px-5 py-2">${r.requiredDate}</td><td class="px-5 py-2">${r.promisedDate? (r.isBatch?'分批确认':r.promisedDate):'<span class="text-amber-500">未确认</span>'}</td><td class="px-5 py-2 text-xs">${r.confirmPerson?`${r.confirmPerson}<br>${r.confirmTime?.slice(0,10)}`:'-'}</td></tr>`).join(''); 
+        this.renderPagination('adminPagination', total, this.adminPage, this.adminPageSize, (p)=>{this.adminPage=p; this.renderAdminTable();}, (s)=>{this.adminPageSize=s; this.adminPage=1; this.renderAdminTable();}); 
+      },
+      handleAdminSearch(){ 
+        this.adminSearch = document.getElementById('adminSearchInput').value.toLowerCase(); 
+        this.adminPage = 1; 
+        this.renderAdminTable(); 
+      },
+      async loadRiskData(){ 
+        const lines = await getOrderLinesWithDelivery(); 
+        const today = new Date(); today.setHours(0,0,0,0); 
+        const risk = lines.filter(r=>{ 
+          if(r.promisedDate) return new Date(r.promisedDate) > new Date(r.requiredDate); 
+          else { const diff = Math.ceil((new Date(r.requiredDate)-today)/(86400000)); return diff <= 3; } 
+        }); 
+        const tbody = document.getElementById('riskTableBody'); 
+        if(!risk.length){ tbody.innerHTML=''; document.getElementById('riskEmptyMsg').classList.remove('hidden'); return; } 
+        document.getElementById('riskEmptyMsg').classList.add('hidden'); 
+        tbody.innerHTML = risk.map(r=>`<tr><td class="px-6 py-2">${r.orderId}</td><td class="px-6 py-2">${r.itemCode}</td><td class="px-6 py-2">${r.supplierName}</td><td class="text-red-500 px-6 py-2">${r.requiredDate}</td><td class="px-6 py-2">${r.promisedDate||'—'}</td><td class="px-6 py-2">${r.promisedDate?'<span class="bg-red-100 text-red-700 px-2 rounded-full text-xs">延误</span>':'<span class="bg-orange-100 text-orange-700 px-2 rounded-full text-xs">临期未确认</span>'}</td></tr>`).join(''); 
+      },
+      // 供应商账号管理（含批量删除）
+      async loadSupplierAccounts(){ 
+        const accs = await get(STORE.supplierAccounts)||[]; 
+        const tbody = document.getElementById('accountsTableBody'); 
+        if(!accs.length){ tbody.innerHTML=''; document.getElementById('accountsEmptyMsg').classList.remove('hidden'); return; } 
+        document.getElementById('accountsEmptyMsg').classList.add('hidden'); 
+        tbody.innerHTML = accs.map(a=>`<tr><td class="px-3"><input type="checkbox" class="supplier-checkbox" data-name="${a.name}"></td><td class="px-6 py-3">${a.name}</td><td class="text-gray-500 px-6 py-3">${new Date(a.createTime).toLocaleString()}</td><td class="px-6 py-3"><button onclick="app.resetSupplierPwd('${a.name}')" class="text-blue-600 mr-3">重置密码</button><button onclick="app.deleteSupplierAccount('${a.name}')" class="text-red-500">删除</button></td></tr>`).join(''); 
+      },
+      toggleSelectAllSuppliers(checked){ 
+        document.querySelectorAll('.supplier-checkbox').forEach(cb=>cb.checked = checked); 
+      },
+      async batchDeleteSuppliers(){ 
+        const selected = Array.from(document.querySelectorAll('.supplier-checkbox:checked')).map(cb=>cb.getAttribute('data-name')); 
+        if(selected.length === 0) return toast('请至少选择一个供应商','warning'); 
+        if(!confirm(`确定删除 ${selected.length} 个供应商账号？`)) return; 
+        let accs = await get(STORE.supplierAccounts)||[]; 
+        accs = accs.filter(a=>!selected.includes(a.name)); 
+        await set(STORE.supplierAccounts, accs); 
+        toast(`已删除 ${selected.length} 个供应商`,'success'); 
+        this.loadSupplierAccounts(); 
+      },
+      regenerateSupplierPwd(){ document.getElementById('newSupPwd').value = generateRandomPassword(8); },
+      async addAccount(){ 
+        const name = document.getElementById('newSupName').value.trim(); 
+        let pwd = document.getElementById('newSupPwd').value.trim(); 
+        if(!name) return toast('供应商名称不能为空','warning'); 
+        if(!pwd) pwd = generateRandomPassword(8); 
+        const accs = await get(STORE.supplierAccounts)||[]; 
+        if(accs.some(a=>a.name===name)) return toast('账号已存在','error'); 
+        accs.push({name, password:pwd, createTime:new Date().toISOString()}); 
+        await set(STORE.supplierAccounts, accs); 
+        toast(`供应商 ${name} 添加成功，密码: ${pwd}`,'success'); 
+        document.getElementById('newSupName').value = ''; 
+        this.regenerateSupplierPwd(); 
+        this.loadSupplierAccounts(); 
+      },
+      async resetSupplierPwd(name){ 
+        const newPwd = generateRandomPassword(8); 
+        const accs = await get(STORE.supplierAccounts)||[]; 
+        const acc = accs.find(a=>a.name===name); 
+        if(acc) acc.password = newPwd; 
+        await set(STORE.supplierAccounts, accs); 
+        toast(`重置 ${name} 的新密码: ${newPwd}`,'info'); 
+        this.loadSupplierAccounts(); 
+      },
+      async deleteSupplierAccount(name){ 
+        if(!confirm(`删除供应商 ${name} ？`)) return; 
+        let accs = await get(STORE.supplierAccounts)||[]; 
+        accs = accs.filter(a=>a.name!==name); 
+        await set(STORE.supplierAccounts, accs); 
+        toast('已删除','success'); 
+        this.loadSupplierAccounts(); 
+      },
+      async downloadAccounts(){ 
+        const accs = await get(STORE.supplierAccounts)||[]; 
+        if(!accs.length) return toast('无账号','warning'); 
+        this.exportToExcel(accs.map(a=>({供应商:a.name,密码:a.password,创建时间:a.createTime})), '供应商账号清单.xlsx'); 
+      },
+      // 管理员账号管理
+      async loadAdminAccounts(){ 
+        const accs = await get(STORE.adminAccounts)||[]; 
+        const tbody = document.getElementById('adminAccountsTableBody'); 
+        if(!accs.length){ tbody.innerHTML=''; document.getElementById('adminAccountsEmptyMsg').classList.remove('hidden'); return; } 
+        document.getElementById('adminAccountsEmptyMsg').classList.add('hidden'); 
+        tbody.innerHTML = accs.map(a=>`<tr><td class="px-6 py-3">${a.username}</td><td class="px-6 py-3 text-gray-500">${new Date(a.createTime).toLocaleString()}</td><td class="px-6 py-3"><button onclick="app.resetAdminPwd('${a.username}')" class="text-indigo-600 mr-3">重置密码</button><button onclick="app.deleteAdminAccount('${a.username}')" class="text-red-500">删除</button></td></tr>`).join(''); 
+      },
+      genRandomAdminPwd(){ document.getElementById('newAdminPwd').value = generateRandomPassword(8); },
+      async addAdminAccount(){ 
+        const un = document.getElementById('newAdminName').value.trim(); 
+        let pwd = document.getElementById('newAdminPwd').value.trim(); 
+        if(!un) return toast('用户名必填','warning'); 
+        if(!pwd) pwd = '123456'; 
+        const accs = await get(STORE.adminAccounts)||[]; 
+        if(accs.some(a=>a.username===un)) return toast('管理员已存在','error'); 
+        accs.push({username:un, password:pwd, createTime:new Date().toISOString()}); 
+        await set(STORE.adminAccounts, accs); 
+        toast(`管理员 ${un} 添加成功`,'success'); 
+        document.getElementById('newAdminName').value = ''; 
+        document.getElementById('newAdminPwd').value = '123456'; 
+        this.loadAdminAccounts(); 
+      },
+      async resetAdminPwd(username){ 
+        const newPwd = generateRandomPassword(8); 
+        const accs = await get(STORE.adminAccounts)||[]; 
+        const adm = accs.find(a=>a.username===username); 
+        if(adm) adm.password = newPwd; 
+        await set(STORE.adminAccounts, accs); 
+        toast(`管理员 ${username} 新密码: ${newPwd}`,'info'); 
+        this.loadAdminAccounts(); 
+      },
+      async deleteAdminAccount(username){ 
+        if(username === this.currentUser?.name) return toast('不能删除当前登录的管理员','error'); 
+        if(!confirm(`删除管理员 ${username} ？`)) return; 
+        let accs = await get(STORE.adminAccounts)||[]; 
+        accs = accs.filter(a=>a.username!==username); 
+        await set(STORE.adminAccounts, accs); 
+        toast('已删除','success'); 
+        this.loadAdminAccounts(); 
+      },
+      async changeOwnPassword(){ 
+        const old = document.getElementById('changeOldPwd').value; 
+        const newpwd = document.getElementById('changeNewPwd').value; 
+        if(!old||!newpwd) return toast('请填写完整','warning'); 
+        const admins = await get(STORE.adminAccounts)||[]; 
+        const idx = admins.findIndex(a=>a.username===this.currentUser.name); 
+        if(idx===-1) return toast('用户异常','error'); 
+        if(admins[idx].password !== old) return toast('旧密码错误','error'); 
+        admins[idx].password = newpwd; 
+        await set(STORE.adminAccounts, admins); 
+        toast('密码修改成功, 请重新登录','success'); 
+        setTimeout(()=>this.logout(),1500); 
+      },
+      switchAdminTab(tab){ 
+        document.getElementById('adminDataPanel').classList.add('hidden'); 
+        document.getElementById('adminAccountsPanel').classList.add('hidden'); 
+        document.getElementById('adminRiskPanel').classList.add('hidden'); 
+        if(tab==='data') document.getElementById('adminDataPanel').classList.remove('hidden'); 
+        else if(tab==='accounts') document.getElementById('adminAccountsPanel').classList.remove('hidden'); 
+        else document.getElementById('adminRiskPanel').classList.remove('hidden'); 
+        document.querySelectorAll('.tab-btn').forEach(btn=>{ 
+          if(btn.dataset.tab === tab) btn.className = 'tab-btn pb-2 px-1 border-b-2 border-blue-600 text-blue-700 font-medium'; 
+          else btn.className = 'tab-btn pb-2 px-1 border-b-2 border-transparent text-gray-500'; 
+        }); 
+        if(tab === 'risk') this.loadRiskData(); 
+      },
+      // 导入导出
+      handleFileUpload(e){ 
+        this.pendingFile = e.target.files[0]; 
+        document.getElementById('fileNameDisplay').innerText = this.pendingFile?.name || '未选择'; 
+        document.getElementById('importExecuteBtn').disabled = false; 
+      },
+      async executeImport(){ 
+        if(!this.pendingFile) return; 
+        const data = await this.pendingFile.arrayBuffer(); 
+        const wb = XLSX.read(data); 
+        const sheet = wb.Sheets[wb.SheetNames[0]]; 
+        const rows = XLSX.utils.sheet_to_json(sheet); 
+        const formatted = rows.map(r=>({ 
+          orderId: r['采购单号'] || `PO-${Date.now()}-${Math.random()}`, 
+          itemCode: r['物料编码'] || `ITEM-${Math.random()}`, 
+          itemName: r['物料名称'] || '', 
+          spec: r['规格型号'] || '', 
+          qty: Number(r['需求数量']) || 0, 
+          requiredDate: this.normalizeDate(r['需求日期']), 
+          supplierName: r['供应商名称'], 
+          remarks: r['备注'] || '' 
+        })).filter(f=>f.supplierName && f.itemCode); 
+        if(!formatted.length) return toast('至少包含供应商名称和物料编码','error'); 
+        let orders = await get(STORE.orders)||[]; 
+        formatted.forEach(f=>orders.push(f)); 
+        await set(STORE.orders, orders); 
+        const supAccs = await get(STORE.supplierAccounts)||[]; 
+        const existSet = new Set(supAccs.map(a=>a.name)); 
+        formatted.forEach(f=>{ 
+          if(!existSet.has(f.supplierName)){ 
+            supAccs.push({name:f.supplierName, password:generateRandomPassword(8), createTime:new Date().toISOString()}); 
+            existSet.add(f.supplierName); 
+          } 
+        }); 
+        await set(STORE.supplierAccounts, supAccs); 
+        toast(`导入${formatted.length}条物料，新供应商已生成随机密码`,'success'); 
+        this.loadAdminData(); 
+        this.pendingFile = null; 
+        document.getElementById('importExecuteBtn').disabled = true; 
+      },
+      async importDesktopCSV(){ 
+        const demo = [{ "采购单号":"DEMO-101","物料编码":"BAT","物料名称":"电池组","需求数量":100,"需求日期":"2025-01-20","供应商名称":"立达建材"},{ "采购单号":"DEMO-102","物料编码":"CHIP","物料名称":"芯片","需求数量":500,"需求日期":"2025-01-14","供应商名称":"华强电子"}]; 
+        let orders = await get(STORE.orders)||[]; 
+        demo.forEach(d=>orders.push({orderId:d.采购单号, itemCode:d.物料编码, itemName:d.物料名称, qty:d.需求数量, requiredDate:d.需求日期, supplierName:d.供应商名称, remarks:''})); 
+        await set(STORE.orders, orders); 
+        toast('已载入示例订单','success'); 
+        this.loadAdminData(); 
+      },
+      downloadTemplate(){ 
+        const ws = XLSX.utils.json_to_sheet([{ "采购单号":"PO-模板","物料编码":"M001","物料名称":"示例物料","规格型号":"规格","需求数量":100,"需求日期":"2025-02-01","申请人":"张三","供应商名称":"供应商名","备注":"" }]); 
+        const wb = XLSX.utils.book_new(); 
+        XLSX.utils.book_append_sheet(wb,ws,"模板"); 
+        XLSX.writeFile(wb,"提采汇总表模板.xlsx"); 
+      },
+      async clearAllData(){ 
+        if(!confirm('彻底清空所有订单/交期/账号？')) return; 
+        localStorage.clear(); 
+        await initSystemData(); 
+        toast('系统已重置','success'); 
+        this.loadAdminData(); 
+      },
+      normalizeDate(v){ 
+        if(!v) return ''; 
+        if(typeof v === 'number'){ const d = new Date((v-25569)*86400000); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; } 
+        const str = String(v); 
+        const m = str.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/); 
+        return m ? `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}` : str; 
+      },
+      exportToExcel(data,fn){ 
+        if(!data.length) return toast('无数据','warning'); 
+        const ws = XLSX.utils.json_to_sheet(data); 
+        const wb = XLSX.utils.book_new(); 
+        XLSX.utils.book_append_sheet(wb,ws,"数据"); 
+        XLSX.writeFile(wb,fn); 
+        toast(`导出 ${fn}`,'success'); 
+      },
+      renderPagination(contId,total,page,size,onPage,onSize){ 
+        const el = document.getElementById(contId); 
+        if(total <= size){ el?.classList.add('hidden'); return; } 
+        el.classList.remove('hidden'); 
+        el.innerHTML = `<div>${(page-1)*size+1}-${Math.min(page*size,total)} / ${total}</div><div class="flex gap-2"><button class="page-prev px-3 py-1 border rounded">上一页</button><span>第${page}页</span><button class="page-next px-3 py-1 border rounded">下一页</button><select class="page-size"><option value="15" ${size===15?'selected':''}>15条</option><option value="30">30条</option></select></div>`; 
+        el.querySelector('.page-prev').onclick = ()=>{ if(page>1) onPage(page-1); }; 
+        el.querySelector('.page-next').onclick = ()=>{ if(page<Math.ceil(total/size)) onPage(page+1); }; 
+        el.querySelector('.page-size').onchange = (e)=>onSize(parseInt(e.target.value)); 
+      }
+    };
+
+    // 绑定全局事件（视图内按钮）
+    window.addEventListener('DOMContentLoaded', () => {
+      app.init();
+      // 动态绑定事件（由于使用 innerHTML 渲染，使用事件委托）
+      document.getElementById('appMain')?.addEventListener('click', (e) => {
+        if(e.target.id === 'selectAllCheckbox') app.toggleSelectAll(e.target.checked);
+        if(e.target.id === 'batchConfirmBtn') app.openBatchConfirmModal();
+        if(e.target.id === 'closeBatchModalBtn' || e.target.id === 'cancelBatchBtn') app.closeBatchModal();
+        if(e.target.id === 'confirmBatchBtn') app.submitBatchConfirm();
+        if(e.target.id === 'downloadPendingBtn') app.downloadSupplierOrders();
+        if(e.target.id === 'refreshSupplierBtn') app.loadSupplierData();
+        if(e.target.id === 'resetDataBtn') resetSystem();
+        if(e.target.id === 'genSupPwdBtn') app.regenerateSupplierPwd();
+        if(e.target.id === 'addSupplierBtn') app.addAccount();
+        if(e.target.id === 'batchDeleteSupplierBtn') app.batchDeleteSuppliers();
+        if(e.target.id === 'downloadAccountsBtn') app.downloadAccounts();
+        if(e.target.id === 'selectAllSupplierCheckbox') app.toggleSelectAllSuppliers(e.target.checked);
+        if(e.target.id === 'genAdminPwdBtn') app.genRandomAdminPwd();
+        if(e.target.id === 'addAdminBtn') app.addAdminAccount();
+        if(e.target.id === 'changeOwnPwdBtn') app.changeOwnPassword();
+        if(e.target.id === 'refreshRiskBtn') app.loadRiskData();
+        if(e.target.id === 'importCsvBtn') app.importDesktopCSV();
+        if(e.target.id === 'downloadTemplateBtn') app.downloadTemplate();
+        if(e.target.id === 'clearAllDataBtn') app.clearAllData();
+        if(e.target.id === 'importExecuteBtn') app.executeImport();
+        if(e.target.id === 'excelUploadFile') app.handleFileUpload(e);
+      });
+      document.getElementById('appMain')?.addEventListener('input', (e) => {
+        if(e.target.id === 'supplierSearchInput') app.handleSupplierSearch();
+        if(e.target.id === 'adminSearchInput') app.handleAdminSearch();
+      });
+      document.getElementById('appMain')?.addEventListener('click', (e) => {
+        if(e.target.classList?.contains('filter-btn')) app.setSupplierFilter(e.target.dataset.filter);
+        if(e.target.classList?.contains('tab-btn')) app.switchAdminTab(e.target.dataset.tab);
+      });
+    });
+    window.app = app;
+  </script>
+</body>
+</html>
